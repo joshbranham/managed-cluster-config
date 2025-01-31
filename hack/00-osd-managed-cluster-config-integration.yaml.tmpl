@@ -27948,6 +27948,148 @@ objects:
       managed.openshift.io/gitHash: ${IMAGE_TAG}
       managed.openshift.io/gitRepoName: ${REPO_NAME}
       managed.openshift.io/osd: 'true'
+    name: ocpbugs-48519
+  spec:
+    clusterDeploymentSelector:
+      matchLabels:
+        api.openshift.com/managed: 'true'
+      matchExpressions:
+      - key: ext-hypershift.openshift.io/cluster-type
+        operator: In
+        values:
+        - service-cluster
+      - key: api.openshift.com/fedramp
+        operator: NotIn
+        values:
+        - 'true'
+    resourceApplyMode: Sync
+    resources:
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: openshift-pki-operator-annotator
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: pki-operator-annotator
+      rules:
+      - apiGroups:
+        - work.open-cluster-management.io
+        resources:
+        - manifestworks
+        verbs:
+        - get
+        - patch
+      - apiGroups:
+        - cluster.open-cluster-management.io
+        resources:
+        - managedclusters
+        verbs:
+        - get
+        - list
+      - apiGroups:
+        - ''
+        resources:
+        - namespaces
+        verbs:
+        - get
+        - list
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: pki-operator-annotator
+        namespace: openshift-pki-operator-annotator
+    - kind: ClusterRoleBinding
+      apiVersion: rbac.authorization.k8s.io/v1
+      metadata:
+        name: pki-operator-annotator
+      subjects:
+      - kind: ServiceAccount
+        name: pki-operator-annotator
+        namespace: openshift-pki-operator-annotator
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: pki-operator-annotator
+    - apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: pki-operator-annotator-4-17
+        namespace: openshift-pki-operator-annotator
+        annotations:
+          kubernetes.io/description: Patches 4.17 ManifestWork to fixed pki-operator
+            version https://issues.redhat.com/browse/OSD-27987
+      spec:
+        schedule: '*/5 * * * *'
+        concurrencyPolicy: Replace
+        jobTemplate:
+          spec:
+            template:
+              metadata:
+                name: pki-operator-annotator
+                namespace: openshift-pki-operator-annotator
+                annotations:
+                  kubernetes.io/description: Patches 4.17 ManifestWork to fixed pki-operator
+                    version https://issues.redhat.com/browse/OSD-27987
+              spec:
+                affinity:
+                  nodeAffinity:
+                    preferredDuringSchedulingIgnoredDuringExecution:
+                    - preference:
+                        matchExpressions:
+                        - key: node-role.kubernetes.io/infra
+                          operator: Exists
+                      weight: 1
+                tolerations:
+                - effect: NoSchedule
+                  key: node-role.kubernetes.io/infra
+                  operator: Exists
+                containers:
+                - name: pki-operator-annotator
+                  image: image-registry.openshift-image-registry.svc:5000/openshift/tools:latest
+                  imagePullPolicy: Always
+                  securityContext:
+                    allowPrivilegeEscalation: false
+                    capabilities:
+                      drop:
+                      - ALL
+                    runAsNonRoot: true
+                  env:
+                  - name: IMAGE
+                    value: quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:1ac8880940e256abb01cf8d8276beeb53db37572ab7369a752de5af244bc24e4
+                  - name: MAJOR_MINOR_VER
+                    value: '4.17'
+                  command:
+                  - /bin/bash
+                  args:
+                  - -c
+                  - "# Get all manifestwork objects and extract their names\nmanagedclusters=$(oc\
+                    \ get managedclusters -l openshiftVersion-major-minor=${MAJOR_MINOR_VER}\
+                    \ -o jsonpath='{range .items[*]}{.metadata.name}{\"\\n\"}{end}')\n\
+                    # Loop through each manifestwork object\nfor clusterID in ${managedclusters[@]};do\
+                    \ \n  # Extract namespace and name\n  namespace=$(oc get managedclusters\
+                    \ $clusterID -o json | jq -r '.metadata.labels[\"api.openshift.com/management-cluster\"\
+                    ]')\n  kinds=$(oc get manifestwork -n $namespace $clusterID -o\
+                    \ json | jq -r '.spec.workload.manifests[].kind')\n  num=0 \n\
+                    \  for kind in $kinds;do \n    if [[ $kind == \"HostedCluster\"\
+                    \ ]]; then\n        echo $clusterID\n        #~1 escapes / in\
+                    \ bash\n        json_payload='[{\"op\":\"replace\",\"path\":\"\
+                    /spec/workload/manifests/'\"$num\"'/metadata/annotations/hypershift.openshift.io~1control-plane-operator-image\"\
+                    ,\"value\":\"'\"$IMAGE\"'\"}]'\n        echo \"oc patch manifestwork\
+                    \ $clusterID -n $namespace --type='json' -p \"$json_payload\"\"\
+                    \n        oc patch manifestwork $clusterID -n $namespace --type='json'\
+                    \ -p \"$json_payload\"\n        echo \"-------------------------------------------------------------------------\"\
+                    \n        break\n    fi\n  (( num++))\n  done\ndone\n"
+                serviceAccountName: pki-operator-annotator
+                automountServiceAccountToken: true
+                restartPolicy: Never
+- apiVersion: hive.openshift.io/v1
+  kind: SelectorSyncSet
+  metadata:
+    labels:
+      managed.openshift.io/gitHash: ${IMAGE_TAG}
+      managed.openshift.io/gitRepoName: ${REPO_NAME}
+      managed.openshift.io/osd: 'true'
     name: ocpbugs-773
   spec:
     clusterDeploymentSelector:

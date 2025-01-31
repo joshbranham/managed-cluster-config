@@ -1,0 +1,76 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pki-operator-annotator-4-17
+  namespace: openshift-pki-operator-annotator
+  annotations:
+    kubernetes.io/description: "Patches 4.17 ManifestWork to fixed pki-operator version https://issues.redhat.com/browse/OSD-27987"
+spec:
+  schedule: "*/5 * * * *" # Every five minutes
+  concurrencyPolicy: Replace
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          name: pki-operator-annotator
+          namespace: openshift-pki-operator-annotator
+          annotations:
+            kubernetes.io/description: "Patches 4.17 ManifestWork to fixed pki-operator version https://issues.redhat.com/browse/OSD-27987"
+        spec:
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - preference:
+                    matchExpressions:
+                      - key: node-role.kubernetes.io/infra
+                        operator: Exists
+                  weight: 1
+          tolerations:
+            - effect: NoSchedule
+              key: node-role.kubernetes.io/infra
+              operator: Exists
+          containers:
+            - name: pki-operator-annotator
+              image: image-registry.openshift-image-registry.svc:5000/openshift/tools:latest
+              imagePullPolicy: Always
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                runAsNonRoot: true
+              env:
+                - name: IMAGE
+                  # oc adm release info --image-for hypershift quay.io/openshift-release-dev/ocp-release:4.17.15-multi
+                  value: "quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:1ac8880940e256abb01cf8d8276beeb53db37572ab7369a752de5af244bc24e4"
+                - name: MAJOR_MINOR_VER
+                  value: "4.17"
+              command:
+                - /bin/bash
+              args:
+                - -c
+                - |
+                  # Get all manifestwork objects and extract their names
+                  managedclusters=$(oc get managedclusters -l openshiftVersion-major-minor=${MAJOR_MINOR_VER} -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+                  # Loop through each manifestwork object
+                  for clusterID in ${managedclusters[@]};do 
+                    # Extract namespace and name
+                    namespace=$(oc get managedclusters $clusterID -o json | jq -r '.metadata.labels["api.openshift.com/management-cluster"]')
+                    kinds=$(oc get manifestwork -n $namespace $clusterID -o json | jq -r '.spec.workload.manifests[].kind')
+                    num=0 
+                    for kind in $kinds;do 
+                      if [[ $kind == "HostedCluster" ]]; then
+                          echo $clusterID
+                          #~1 escapes / in bash
+                          json_payload='[{"op":"replace","path":"/spec/workload/manifests/'"$num"'/metadata/annotations/hypershift.openshift.io~1control-plane-operator-image","value":"'"$IMAGE"'"}]'
+                          echo "oc patch manifestwork $clusterID -n $namespace --type='json' -p "$json_payload""
+                          oc patch manifestwork $clusterID -n $namespace --type='json' -p "$json_payload"
+                          echo "-------------------------------------------------------------------------"
+                          break
+                      fi
+                    (( num++))
+                    done
+                  done
+          serviceAccountName: pki-operator-annotator
+          automountServiceAccountToken: true
+          restartPolicy: Never
