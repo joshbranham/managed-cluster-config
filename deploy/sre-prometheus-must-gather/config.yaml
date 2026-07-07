@@ -11,6 +11,7 @@ selectorSyncSet:
     - key: hive.openshift.io/cluster-region
       operator: In
       values:
+        - "us-east-1"
         - "us-west-1"
         - "eu-west-2"
         - "ap-southeast-1"
