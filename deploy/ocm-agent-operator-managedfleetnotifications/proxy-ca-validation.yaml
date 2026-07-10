@@ -11,7 +11,7 @@ spec:
     logType: "Cluster Networking"
     notificationMessage: |-
       Your cluster requires you to take action because one of the Certificate Authority (CA) certificates in the Additional Trusted CA Bundle you have added to your cluster is detected as unparseable or invalid. Please ensure your Additional Trusted CA Bundle represents a bundle of one or more PEM-encoded X.509 certificates that are all concatenated together. For more information, please refer to https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy#configuring-a-proxy-trust-bundle-responsibilities_configuring-a-cluster-wide-proxy
-    resendInterval: 24
+    resendWait: 24
     references:
       - https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy
 ---
@@ -28,7 +28,7 @@ spec:
     logType: "Cluster Networking"
     notificationMessage: |-
       Your cluster requires you to take action because your configured cluster-wide proxy is failing to satisfy readiness endpoint reachability checks that can confirm its correct operation. Please verify the availability of your cluster-wide proxy and its ability to proxy egress network traffic from the cluster. For more information on management of the cluster-wide proxy, please refer to https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy#configuring-a-proxy-trust-bundle-responsibilities_configuring-a-cluster-wide-proxy
-    resendInterval: 24
+    resendWait: 24
     references:
       - https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy
 ---
@@ -45,7 +45,7 @@ spec:
     logType: "Cluster Networking"
     notificationMessage: |-
       Your cluster requires you to take action because one of the Certificate Authority (CA) certificates in the Additional Trusted CA Bundle you have set for your cluster is due to expire. To avoid any potential disruption of service or cluster availability caused by the expiration of the CA certificate, please ensure your Additional Trusted CA Bundle is updated with any new CA certificates required. For more information, please refer to https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy#configuring-a-proxy-trust-bundle-responsibilities_configuring-a-cluster-wide-proxy
-    resendInterval: 48
+    resendWait: 48
     references:
       - https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy
 ---
@@ -62,6 +62,6 @@ spec:
     logType: "Cluster Networking"
     notificationMessage: |-
       Your cluster requires you to take action because one of the Certificate Authority (CA) certificates in the Additional Trusted CA Bundle you have added to your cluster has now reached its expiration date. To avoid any potential disruption of service or cluster availability caused by the expiration of the CA certificate, please ensure your Additional Trusted CA Bundle is updated with any new CA certificates required and remove the expired CA certificates. For more information, please refer to https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy#configuring-a-proxy-trust-bundle-responsibilities_configuring-a-cluster-wide-proxy
-    resendInterval: 24
+    resendWait: 24
     references:
       - https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/4/html/ovn-kubernetes_network_plugin/configuring-a-cluster-wide-proxy
