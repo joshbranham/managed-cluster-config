@@ -11,14 +11,14 @@ spec:
   - name: sre-infra-per-node-resource-consumption-recording.rules
     rules:
     ## Per-node CPU utilization for infra nodes.
-    ## Computes the average CPU utilization (non-idle) across all cores on each infra node over the past 1h.
+    ## Computes the average CPU utilization (non-idle) across all cores on each infra node over the past 5m.
     ## Joins with sre:telemetry:managed_labels to pick up _id for centralized observability.
     ## Returns a value between 0 and 1 per infra node instance.
       - expr: |
             (
               avg by (instance) (
                 sum by (cpu, instance) (
-                  rate(node_cpu_seconds_total{mode!="idle"}[1h])
+                  rate(node_cpu_seconds_total{mode!="idle"}[5m])
                 )
               )
               * on (instance) (
@@ -55,6 +55,70 @@ spec:
         record: sre:node_infra:memory_utilization_per_node
   - name: sre-infra-per-node-resizing-alerts
     rules:
+    ##
+    ## Extreme tier: Individual node critical utilization.
+    ## Singleton alerts fire when any infra node exceeds 90% utilization but
+    ## fewer than N-1 nodes are affected — indicates an anomalous workload on
+    ## a specific node rather than the cluster outgrowing its capacity.
+    ## N-1 extreme alerts fire when N-1 or more nodes exceed 90% — indicates
+    ## the cluster is critically undersized and needs an urgent resize.
+    ## These two classes are mutually exclusive by definition.
+    ##
+    ## On 2-node (single-AZ) clusters, N-1 = 1, so the singleton condition
+    ## (count < 1) is never satisfied; all breaches route to the N-1 path.
+    ##
+      - alert: ExtremelyHighIndividualInfraNodeCPUSRE
+        expr: |
+          count(sre:node_infra:cpu_utilization_per_node > 0.90) >= 1
+          and
+          count(sre:node_infra:cpu_utilization_per_node > 0.90)
+          <
+          count(cluster:nodes_roles{label_node_role_kubernetes_io="infra"}) - 1
+        for: 45m
+        labels:
+          severity: warning
+          namespace: openshift-monitoring
+        annotations:
+          summary: "Infra node above 90% CPU for 45 minutes"
+          description: "An infrastructure node has had CPU utilization above 90% for 45 minutes, but fewer than N-1 nodes are affected. This indicates anomalous resource consumption on a specific node rather than a cluster-wide capacity issue. Investigate the node's workloads."
+      - alert: ExtremelyHighIndividualInfraNodeMemorySRE
+        expr: |
+          count(sre:node_infra:memory_utilization_per_node > 0.90) >= 1
+          and
+          count(sre:node_infra:memory_utilization_per_node > 0.90)
+          <
+          count(cluster:nodes_roles{label_node_role_kubernetes_io="infra"}) - 1
+        for: 30m
+        labels:
+          severity: warning
+          namespace: openshift-monitoring
+        annotations:
+          summary: "Infra node above 90% memory for 30 minutes"
+          description: "An infrastructure node has had memory utilization above 90% for 30 minutes, but fewer than N-1 nodes are affected. This indicates anomalous resource consumption on a specific node rather than a cluster-wide capacity issue. Investigate the node's workloads."
+      - alert: cpu-InfraNodesExcessiveResourceConsumptionPerNodeSRE45m
+        expr: |
+          count(sre:node_infra:cpu_utilization_per_node > 0.90)
+          >=
+          count(cluster:nodes_roles{label_node_role_kubernetes_io="infra"}) - 1
+        for: 45m
+        labels:
+          severity: warning
+          namespace: openshift-monitoring
+        annotations:
+          summary: "N-1 infra nodes above 90% CPU for 45 minutes"
+          description: "At least N-1 infrastructure nodes have had CPU utilization above 90% for 45 minutes. The cluster is critically undersized and infrastructure nodes should be resized urgently."
+      - alert: memory-InfraNodesExcessiveResourceConsumptionPerNodeSRE30m
+        expr: |
+          count(sre:node_infra:memory_utilization_per_node > 0.90)
+          >=
+          count(cluster:nodes_roles{label_node_role_kubernetes_io="infra"}) - 1
+        for: 30m
+        labels:
+          severity: warning
+          namespace: openshift-monitoring
+        annotations:
+          summary: "N-1 infra nodes above 90% memory for 30 minutes"
+          description: "At least N-1 infrastructure nodes have had memory utilization above 90% for 30 minutes. The cluster is critically undersized and infrastructure nodes should be resized urgently."
     ##
     ## Tier 1: Initial threshold breach warnings.
     ## These fire after 10m to confirm the condition is not a momentary blip.
