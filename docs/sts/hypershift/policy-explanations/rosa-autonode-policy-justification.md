@@ -36,23 +36,32 @@ The ROSA Karpenter Controller policy follows the established ROSA security patte
 
 **Security**: Pricing service is global and read-only, posing no security risk.
 
-### KMSPermissions
+### DescribeKMSKeysForEBSVolumeEncryption
 
-**Actions**: `kms:DescribeKey`, `kms:Encrypt`, `kms:Decrypt`, `kms:ReEncrypt*`, `kms:GenerateDataKey*`
+**Actions**: `kms:DescribeKey`
 **Resource**: `arn:aws:kms:*:*:key/*`
-**Condition**: `aws:ResourceTag/red-hat: "true"`
-**Justification**: Required for EBS volume encryption when customers specify customer-managed KMS keys for node storage encryption. Karpenter Controller needs to encrypt volumes during instance creation and access encrypted volumes for node operations.
+**Condition**: `StringEquals` / `aws:ResourceTag/red-hat`: `"true"`; `StringLike` / `kms:ViaService`: `ec2.*.amazonaws.com`
+**Justification**: Required for Karpenter Controller to inspect customer-managed KMS key metadata (key state, key spec, usage) before launching instances with encrypted EBS volumes. Split into its own statement because `kms:DescribeKey` must not be scoped by encryption-context conditions — the API call carries no encryption context, so adding `kms:EncryptionContextKeys` would deny every `DescribeKey` request.
 
-**Security**: Limited to KMS keys tagged with `red-hat: true`. Standard KMS operations for volume encryption with no administrative permissions like key creation or deletion.
+**Security**: Read-only metadata operation. Limited to KMS keys tagged `red-hat: true` and called via the EC2 service. No cryptographic or administrative capability.
 
-### KMSGrantPermissions
+### CryptoOpsForEBSVolumeEncryption
 
-**Actions**: `kms:CreateGrant`, `kms:ListGrants`, `kms:RevokeGrant`
+**Actions**: `kms:Decrypt`, `kms:ReEncryptFrom`, `kms:ReEncryptTo`, `kms:GenerateDataKeyWithoutPlaintext`
 **Resource**: `arn:aws:kms:*:*:key/*`
-**Condition**: `Bool` / `kms:GrantIsForAWSResource`: JSON boolean `true`; `StringLike` / `kms:ViaService`: `ec2.*.amazonaws.com`
-**Justification**: Enables Karpenter Controller to create KMS grants for AWS services (like EC2) to use customer-managed keys for EBS volume encryption. Grants allow services to perform cryptographic operations on behalf of the principal.
+**Condition**: `StringEquals` / `aws:ResourceTag/red-hat`: `"true"`; `StringLike` / `kms:ViaService`: `ec2.*.amazonaws.com`; `ForAllValues:StringEquals` / `kms:EncryptionContextKeys`: `["aws:ebs:id"]`
+**Justification**: Required for EBS volume encryption when customers specify customer-managed KMS keys for node storage encryption. Karpenter Controller needs to generate data keys and decrypt/re-encrypt during instance creation and volume attach operations.
 
-**Security**: Grant operations restricted to KMS keys and limited to AWS resources only through conditions, preventing grants to external principals.
+**Security**: Limited to KMS keys tagged `red-hat: true`, called via the EC2 service, and scoped to EBS volume operations via the `kms:EncryptionContextKeys` condition (`aws:ebs:id` is the standard EBS encryption-context key whose value is the volume ID). No administrative permissions.
+
+### CreateGrantForEBSVolumeEncryption
+
+**Actions**: `kms:CreateGrant`
+**Resource**: `arn:aws:kms:*:*:key/*`
+**Condition**: `Bool` / `kms:GrantIsForAWSResource`: `true`; `StringLike` / `kms:ViaService`: `ec2.*.amazonaws.com`; `StringEquals` / `kms:GrantConstraintType`: `"EncryptionContextSubset"`; `ForAllValues:StringEquals` / `kms:GrantOperations`: `["Decrypt", "GenerateDataKeyWithoutPlaintext", "ReEncryptFrom", "ReEncryptTo"]`; `ForAllValues:StringEquals` / `kms:EncryptionContextKeys`: `["aws:ebs:id"]`
+**Justification**: Enables Karpenter Controller to create KMS grants so that EC2 can perform cryptographic operations on customer-managed keys for EBS volume encryption. The grant constraint type `EncryptionContextSubset` ensures the grant only applies when the EBS encryption context is present, while allowing EC2 to include additional context keys. `kms:GrantOperations` restricts the grant to the operations EC2 needs for EBS volume lifecycle: data key generation, decryption, and re-encryption.
+
+**Security**: Grants restricted to AWS resources (`GrantIsForAWSResource`), EC2 service (`ViaService`), EBS operations (`EncryptionContextKeys`), and a fixed set of crypto operations (`GrantOperations`). The `EncryptionContextSubset` constraint type prevents the grant from being used outside EBS volume operations.
 
 ### CreateEC2Resources
 
